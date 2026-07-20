@@ -1,0 +1,256 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- auth service ---
+
+model User {
+  id            String   @id @default(uuid())
+  phone         String   @unique
+  phoneVerified Boolean  @default(false) // false = walk-in account, no OTP done
+  name          String?
+  createdAt     DateTime @default(now())
+
+  roles          UserRole[]
+  refreshTokens  RefreshToken[]
+  profile        UserProfile?
+  patientRecords PatientRecord[]
+
+  @@map("users")
+}
+
+model Role {
+  id    String     @id @default(uuid())
+  name  RoleName   @unique
+  users UserRole[]
+
+  @@map("roles")
+}
+
+enum RoleName {
+  PATIENT
+  ATTENDANT
+  DOCTOR
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id])
+  role   Role @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// --- user / clinic / doctor services ---
+
+model UserProfile {
+  userId String  @id
+  age    Int?
+  gender String?
+  user   User    @relation(fields: [userId], references: [id])
+
+  @@map("user_profiles")
+}
+
+model Clinic {
+  id           String       @id @default(uuid())
+  name         String
+  address      String
+  location     Unsupported("geography(Point, 4326)")? // postgis, added via raw sql
+  workingHours Json
+  ownerUserId  String
+  status       ClinicStatus @default(PENDING)
+  createdAt    DateTime     @default(now())
+
+  doctors        Doctor[]
+  patientRecords PatientRecord[]
+  patientCounter ClinicPatientCounter?
+
+  @@map("clinics")
+}
+
+enum ClinicStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Doctor {
+  id                     String   @id @default(uuid())
+  clinicId               String
+  userId                 String
+  specialization         String
+  avgConsultationMinutes Int      @default(10)
+  createdAt              DateTime @default(now())
+
+  clinic Clinic  @relation(fields: [clinicId], references: [id])
+  visits Visit[]
+
+  @@index([clinicId])
+  @@map("doctors")
+}
+
+// --- patient record service ---
+
+model PatientRecord {
+  id            String   @id @default(uuid())
+  userId        String
+  clinicId      String
+  patientNumber Int      // sequential per clinic, like an OPD number
+  createdAt     DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id])
+  clinic    Clinic     @relation(fields: [clinicId], references: [id])
+  documents Document[]
+  visits    Visit[]
+
+  @@unique([clinicId, patientNumber])
+  @@unique([userId, clinicId]) // one record per user per clinic
+  @@map("patient_records")
+}
+
+model ClinicPatientCounter {
+  clinicId   String @id
+  lastNumber Int    @default(0)
+  clinic     Clinic @relation(fields: [clinicId], references: [id])
+
+  @@map("clinic_patient_counters")
+}
+
+model Document {
+  id                 String       @id @default(uuid())
+  patientRecordId    String?
+  visitId            String?
+  uploadedByRole     UploaderRole
+  cloudinaryUrl      String
+  cloudinaryPublicId String
+  type               DocumentType
+  createdAt          DateTime     @default(now())
+
+  patientRecord PatientRecord? @relation(fields: [patientRecordId], references: [id])
+  visit         Visit?         @relation(fields: [visitId], references: [id])
+
+  @@index([patientRecordId])
+  @@index([visitId])
+  @@map("documents")
+}
+
+enum UploaderRole {
+  PATIENT
+  DOCTOR
+  ATTENDANT
+}
+
+enum DocumentType {
+  PRESCRIPTION
+  REPORT
+  OTHER
+}
+
+// --- queue service (core table) ---
+
+model Visit {
+  id              String      @id @default(uuid())
+  patientRecordId String
+  doctorId        String
+  clinicId        String
+  tokenNumber     Int
+  status          VisitStatus
+  skipCount       Int         @default(0)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  startedAt       DateTime?
+  completedAt     DateTime?
+
+  patientRecord PatientRecord @relation(fields: [patientRecordId], references: [id])
+  doctor        Doctor        @relation(fields: [doctorId], references: [id])
+  documents     Document[]
+
+  @@index([doctorId, status])
+  @@index([patientRecordId, status])
+  @@map("visits")
+}
+
+enum VisitStatus {
+  CREATED
+  IN_QUEUE
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+model DoctorQueueState {
+  doctorId            String       @id
+  clinicId            String
+  state                QueueState   @default(IDLE)
+  pausedFor            PauseReason?
+  preEmergencyVisitId  String?      // saved so emergency close can resume the right token
+  updatedAt            DateTime     @updatedAt
+
+  @@map("doctor_queue_states")
+}
+
+enum QueueState {
+  IDLE
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum PauseReason {
+  EMERGENCY
+  MANUAL
+}
+
+// --- notification service ---
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+model NotificationLog {
+  id      String           @id @default(uuid())
+  visitId String
+  type    NotificationType
+  sentAt  DateTime         @default(now())
+
+  @@unique([visitId, type]) // stops us spamming the same notification twice
+  @@map("notification_logs")
+}
+
+enum NotificationType {
+  JOIN_CONFIRMED
+  UPCOMING_TURN
+  YOUR_TURN
+  TOKEN_SKIPPED
+  TOKEN_CANCELLED
+}
