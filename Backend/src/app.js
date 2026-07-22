@@ -29,5 +29,9 @@ app.get("/health", async (req, res) => {
   res.status(allOk ? 200 : 503).json(status);
 });
 
+
 // routes mounted here as each service gets built
+import authRoutes from "./auth/auth.routes.js"
+
+app.get("api/auth",authRoutes)
 export default app;
