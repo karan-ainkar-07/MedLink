@@ -33,7 +33,11 @@ app.get("/health", async (req, res) => {
 // routes mounted here as each service gets built
 import authRoutes from "./auth/auth.routes.js"
 import userRoutes from "./user/user.routes.js"
+import clinicRoutes from "./clinic/clinic.routes.js"
+import doctorRoutes from "./doctor/doctor.routes.js"
 
 app.use("/api/auth",authRoutes)
 app.use("/api/user",userRoutes)
+app.use('/api/clinic',clinicRoutes)
+app.use('api/doctor',doctorRoutes)
 export default app;

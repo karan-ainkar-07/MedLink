@@ -5,7 +5,7 @@ import { sendOtp as twilioSendOtp, checkOtp } from "./auth.twilio.js";
 import { signAccessToken } from "./auth.jwt.js";
 import { AuthError } from "./auth.errors.js";
 
-const OTP_SEND_RATE_LIMIT = 3; // per phone per hour
+const OTP_SEND_RATE_LIMIT = 3; 
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 
 function hashToken(token) {
@@ -25,7 +25,7 @@ export async function sendOtp(phone) {
   return { sent: true };
 }
 
-export async function verifyOtp(phone, code) {
+export async function verifyOtp(name,phone, code) {
   const approved = await checkOtp(phone, code);
   if (!approved) throw new AuthError("INVALID_CODE");
 
@@ -41,6 +41,7 @@ export async function verifyOtp(phone, code) {
 
     user = await prisma.user.create({
       data: {
+        name,
         phone,
         phoneVerified: true,
         roles: { create: [{ roleId: patientRole.id }] },

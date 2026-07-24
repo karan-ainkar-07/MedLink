@@ -14,6 +14,7 @@ export async function sendOtp(req, res) {
 
     const result = await authService.sendOtp(phone);
     res.json(result);
+    console.log(result)
   } catch (err) {
     if (err instanceof AuthError) {
       return res.status(err.status).json({
@@ -21,7 +22,7 @@ export async function sendOtp(req, res) {
         message: err.publicMessage,
       });
     }
-
+    console.log(err)
     res.status(500).json({
       error: "INTERNAL_ERROR",
       message: "Failed to send OTP",
@@ -31,16 +32,16 @@ export async function sendOtp(req, res) {
 
 export async function verifyOtp(req, res) {
   try {
-    const { phone, code } = req.body;
+    const {name, phone, code } = req.body;
 
-    if (!phone || !code) {
+    if (!name || !phone || !code) {
       return res.status(400).json({
         error: "MISSING_FIELDS",
-        message: "Phone and code are required",
+        message: "Name,Phone and code are required",
       });
     }
 
-    const result = await authService.verifyOtp(phone, code);
+    const result = await authService.verifyOtp(name,phone, code);
     res.json(result);
   } catch (err) {
     if (err instanceof AuthError) {

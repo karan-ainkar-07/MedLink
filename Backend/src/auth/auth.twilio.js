@@ -9,6 +9,12 @@ const client = twilio(
 const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
 
 export async function sendOtp(phone) {
+  if (!phone.startsWith("+")) {
+    return res.status(400).json({
+      error: "INVALID_PHONE",
+      message: "Phone must be in E.164 format (e.g. +919876543210)",
+    });
+  }
   return client.verify.v2
     .services(serviceSid)
     .verifications.create({
